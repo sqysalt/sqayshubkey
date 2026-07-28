@@ -21,8 +21,8 @@ app.get('/generate', (req, res) => {
         <html>
         <head><title>Sqays Hub - Key System</title></head>
         <body style="background:#0b0b0e; color:white; font-family:sans-serif; text-align:center; padding-top:50px;">
-            <h2>Key'iniz Başarıyla Üretildi!</h2>
-            <p>Aşağıdaki key'i kopyalayın ve scriptinize yapıştırın (12 Saat geçerlidir):</p>
+            <h2>Key Successfully Generated!</h2>
+            <p>Copy the key below and paste it into your script (Valid for 12 Hours):</p>
             <input type="text" value="${randomKey}" readonly style="padding:10px; width:300px; text-align:center; font-size:16px; background:#1a1a24; color:#00ffcc; border:1px solid #7a00ff; border-radius:5px;">
         </body>
         </html>
