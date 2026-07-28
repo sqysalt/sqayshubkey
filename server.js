@@ -2,21 +2,21 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Aktif keyleri ve bitiş sürelerini tutan geçici hafıza (Bellek)
+// Aktif keyleri tutan hafıza
 const activeKeys = {}; 
 
-// 1. Rastgele Key Üretme Endpoint'i (Kullanıcı sitene girdiğinde çağrılır)
+// Ana sayfa (Direkt /generate sayfasına yönlendirir)
+app.get('/', (req, res) => {
+    res.redirect('/generate');
+});
+
+// 1. Key Üretme Endpoint'i
 app.get('/generate', (req, res) => {
-    // Rastgele bir key oluştur (Örn: Sqays_A7x9P2Q)
     const randomKey = "Sqays_" + Math.random().toString(36).substring(2, 10).toUpperCase();
-    
-    // Süre hesaplama: Şu anki zaman + 12 saat (milisaniye cinsinden)
     const expirationTime = Date.now() + (12 * 60 * 60 * 1000);
     
-    // Key'i hafızaya kaydet
     activeKeys[randomKey] = expirationTime;
     
-    // Kullanıcıya bu key'i göster
     res.send(`
         <html>
         <head><title>Sqays Hub - Key System</title></head>
@@ -29,16 +29,14 @@ app.get('/generate', (req, res) => {
     `);
 });
 
-// 2. Key Doğrulama Endpoint'i (Roblox Scriptinin istek attığı yer)
+// 2. Key Doğrulama Endpoint'i
 app.get('/verify/:key', (req, res) => {
     const userKey = req.params.key;
     const expireTime = activeKeys[userKey];
     
-    // Key veritabanında var mı ve süresi geçmemiş mi?
     if (expireTime && Date.now() < expireTime) {
         res.json({ valid: true });
     } else {
-        // Süresi dolduysa hafızadan sil ve geçersiz de
         if (expireTime) { delete activeKeys[userKey]; }
         res.json({ valid: false });
     }
