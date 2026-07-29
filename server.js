@@ -1,14 +1,53 @@
 const express = require('express');
+const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Aktif keyleri ve hangi kullanıcının (çerezin) hangi key'e sahip olduğunu tutan hafıza
-const activeKeys = {};       // key -> expirationTime
-const userActiveKey = {};    // cookieId -> { key, expireTime }
-
+const KEY_FILE = './activeKeys.json';
 const SECRET_TOKEN = "SqaysSecurePass_9921";
 
-// Basit çerez (cookie) okuma yardımıcı fonksiyonu
+// Kayıtlı keyleri dosyadan yükleme
+function loadKeysFromDisk() {
+    try {
+        if (fs.existsSync(KEY_FILE)) {
+            const data = fs.readFileSync(KEY_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (e) {
+        console.error("Keyler yüklenirken hata oluştu:", e);
+    }
+    return {};
+}
+
+// Keyleri dosyaya kaydetme
+function saveKeysToDisk(keys) {
+    try {
+        fs.writeFileSync(KEY_FILE, JSON.stringify(keys, null, 2));
+    } catch (e) {
+        console.error("Keyler kaydedilirken hata oluştu:", e);
+    }
+}
+
+// Aktif keyleri ve çerezleri tutan hafıza
+let activeKeys = loadKeysFromDisk();
+const userActiveKey = {};
+
+// Süresi geçen keyleri otomatik temizleme fonksiyonu
+function cleanExpiredKeys() {
+    const now = Date.now();
+    let changed = false;
+    for (const key in activeKeys) {
+        if (now > activeKeys[key]) {
+            delete activeKeys[key];
+            changed = true;
+        }
+    }
+    if (changed) {
+        saveKeysToDisk(activeKeys);
+    }
+}
+
+// Çerez okuma yardımcısı
 function parseCookies(request) {
     const list = {};
     const rc = request.headers.cookie;
@@ -36,18 +75,16 @@ app.get('/', (req, res) => {
 
 // 1. Key Üretme Sayfası
 app.get('/generate', (req, res) => {
+    cleanExpiredKeys();
     const userToken = req.query.token;
     const cookies = parseCookies(req);
     let cookieId = cookies.sqays_user;
 
-    // Eğer çerezi yoksa yeni bir kimlik oluştur
     if (!cookieId) {
         cookieId = "User_" + Math.random().toString(36).substring(2, 15);
-        // Çerezi tarayıcıya 12 saatlik veriyoruz
         res.setHeader('Set-Cookie', `sqays_user=${cookieId}; Max-Age=${12 * 60 * 60}; Path=/; HttpOnly`);
     }
 
-    // Doğru token ile gelmediyse ve daha önce geçerli bir key'i de yoksa içeri alma
     if (userToken !== SECRET_TOKEN && (!userActiveKey[cookieId] || Date.now() > userActiveKey[cookieId].expireTime)) {
         return res.send(`
             <html>
@@ -60,7 +97,6 @@ app.get('/generate', (req, res) => {
         `);
     }
 
-    // Eğer bu kullanıcının zaten 12 saat süresi bitmemiş aktif bir key'i varsa, YENİ KEY ÜRETME, eskisini göster!
     if (userActiveKey[cookieId] && Date.now() < userActiveKey[cookieId].expireTime) {
         const existingKey = userActiveKey[cookieId].key;
         return res.send(`
@@ -75,11 +111,12 @@ app.get('/generate', (req, res) => {
         `);
     }
 
-    // İlk defa veya süresi dolduktan sonra ilk kez token ile geldiyse yeni key üret
     const randomKey = "Sqays_" + Math.random().toString(36).substring(2, 10).toUpperCase();
     const expirationTime = Date.now() + (12 * 60 * 60 * 1000);
     
     activeKeys[randomKey] = expirationTime;
+    saveKeysToDisk(activeKeys); // Dosyaya kalıcı kaydet
+
     userActiveKey[cookieId] = { key: randomKey, expireTime: expirationTime };
     
     res.send(`
@@ -94,15 +131,19 @@ app.get('/generate', (req, res) => {
     `);
 });
 
-// 2. Key Doğrulama Endpoint'i
+// 2. Key Doğrulama Endpoint'i (Roblox Scriptinin istek attığı yer)
 app.get('/verify/:key', (req, res) => {
+    cleanExpiredKeys();
     const userKey = req.params.key;
     const expireTime = activeKeys[userKey];
     
     if (expireTime && Date.now() < expireTime) {
         res.json({ valid: true });
     } else {
-        if (expireTime) { delete activeKeys[userKey]; }
+        if (expireTime) {
+            delete activeKeys[key];
+            saveKeysToDisk(activeKeys);
+        }
         res.json({ valid: false });
     }
 });
