@@ -5,13 +5,32 @@ const PORT = process.env.PORT || 3000;
 // Aktif keyleri tutan hafıza
 const activeKeys = {}; 
 
-// Ana sayfa (Direkt /generate sayfasına yönlendirir)
+// Gizli token (Sadece Work.ink linkinin sonuna ekleyeceğimiz şifre)
+const SECRET_TOKEN = "SqaysSecret123";
+
+// Ana sayfa
 app.get('/', (req, res) => {
-    res.redirect('/generate');
+    res.redirect('/generate?token=' + SECRET_TOKEN);
 });
 
-// 1. Key Üretme Endpoint'i
+// 1. Key Üretme Endpoint'i (Sadece doğru token ile girilirse çalışır)
 app.get('/generate', (req, res) => {
+    const userToken = req.query.token;
+
+    // Eğer token yanlışsa veya yoksa key verme!
+    if (userToken !== SECRET_TOKEN) {
+        return res.send(`
+            <html>
+            <head><title>Access Denied - Sqays Hub</title></head>
+            <body style="background:#0b0b0e; color:#ff4444; font-family:sans-serif; text-align:center; padding-top:100px;">
+                <h2>Access Denied!</h2>
+                <p>You must complete the Work.ink link to get a key.</p>
+            </body>
+            </html>
+        `);
+    }
+
+    // Doğru token ile geldiyse key üret
     const randomKey = "Sqays_" + Math.random().toString(36).substring(2, 10).toUpperCase();
     const expirationTime = Date.now() + (12 * 60 * 60 * 1000);
     
