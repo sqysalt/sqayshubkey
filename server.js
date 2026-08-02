@@ -60,8 +60,109 @@ function parseCookies(req) {
     return list;
 }
 
-// ===== ANA SAYFA (Sitenin Girişi) - İNGİLİZCE =====
+// ===== ANA SAYFA (Artık Akıllı) =====
 app.get('/', (req, res) => {
+    cleanExpired();
+    const cookies = parseCookies(req);
+    const token = cookies.sqays_token;
+
+    // Token varsa ve geçerliyse, bu token'a ait key'i bul
+    let existingKey = null;
+    let keyExpireTime = null;
+
+    if (token && userTokens[token]) {
+        const userId = userTokens[token].userId;
+        // Bu kullanıcıya ait key var mı?
+        for (const key in activeKeys) {
+            if (key.startsWith(userId + '_')) {
+                existingKey = key;
+                keyExpireTime = activeKeys[key];
+                break;
+            }
+        }
+    }
+
+    // Eğer key bulunduysa ve süresi dolmamışsa direkt key'i göster
+    if (existingKey && keyExpireTime && Date.now() < keyExpireTime) {
+        // Kalan süreyi hesapla (saat cinsinden)
+        const remainingMs = keyExpireTime - Date.now();
+        const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
+        const remainingMinutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Sqays Hub - Your Key</title>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body {
+                        background: #0b0b0e;
+                        color: white;
+                        font-family: 'Segoe UI', sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                        margin: 0;
+                    }
+                    .container {
+                        text-align: center;
+                        background: #14141c;
+                        padding: 50px 70px;
+                        border-radius: 20px;
+                        border: 2px solid #00ff88;
+                        box-shadow: 0 0 50px rgba(0, 255, 136, 0.2);
+                    }
+                    h1 {
+                        color: #00ff88;
+                        font-size: 36px;
+                        margin-bottom: 10px;
+                    }
+                    p {
+                        color: #aaa;
+                        margin-bottom: 20px;
+                        font-size: 16px;
+                    }
+                    .key-box {
+                        background: #1a1a24;
+                        padding: 15px;
+                        border-radius: 10px;
+                        border: 1px solid #00ff88;
+                        color: #00ffcc;
+                        font-size: 20px;
+                        font-weight: bold;
+                        letter-spacing: 2px;
+                        margin: 20px 0;
+                        word-break: break-all;
+                    }
+                    .valid {
+                        color: #00ff88;
+                        font-size: 14px;
+                    }
+                    .footer {
+                        margin-top: 25px;
+                        font-size: 12px;
+                        color: #444;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>🔑 Your Key</h1>
+                    <p>This key is valid for <strong>12 hours</strong> from when you first got it.</p>
+                    <div class="key-box">${existingKey}</div>
+                    <p class="valid">✅ Valid for ${remainingHours}h ${remainingMinutes}m more</p>
+                    <div class="footer">Token expires in 12 hours. After that, get a new one via Work.ink.</div>
+                </div>
+            </body>
+            </html>
+        `);
+        return;
+    }
+
+    // Eğer buraya geldiysek: ya token yok, ya key yok, ya da süresi dolmuş
+    // O zaman "Get Key" butonunu göster
     res.send(`
         <!DOCTYPE html>
         <html>
@@ -121,6 +222,11 @@ app.get('/', (req, res) => {
                     font-size: 12px;
                     color: #444;
                 }
+                .warning {
+                    color: #ff8844;
+                    margin-top: 15px;
+                    font-size: 14px;
+                }
             </style>
         </head>
         <body>
@@ -128,6 +234,7 @@ app.get('/', (req, res) => {
                 <h1>🔑 Sqays Hub</h1>
                 <p>Click the button to get your 12-hour key.<br>You will be redirected to Work.ink first.</p>
                 <a href="https://work.ink/2Lvi/6183581d-8712-4fe0-b2e9-fd0cbce9844b" class="btn">🚀 Get Key</a>
+                ${token && userTokens[token] ? `<p class="warning">⚠️ Your previous key has expired. Get a new one.</p>` : ''}
                 <div class="footer">After completing Work.ink, you will be automatically redirected back.</div>
             </div>
         </body>
