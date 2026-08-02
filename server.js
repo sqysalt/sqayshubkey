@@ -60,7 +60,7 @@ function parseCookies(req) {
     return list;
 }
 
-// ===== ANA SAYFA (Sitenin Girişi) =====
+// ===== ANA SAYFA (Sitenin Girişi) - İNGİLİZCE =====
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -126,9 +126,9 @@ app.get('/', (req, res) => {
         <body>
             <div class="container">
                 <h1>🔑 Sqays Hub</h1>
-                <p>12 saat geçerli anahtarını almak için butona tıkla.<br>Önce Work.ink'e yönlendirileceksin.</p>
+                <p>Click the button to get your 12-hour key.<br>You will be redirected to Work.ink first.</p>
                 <a href="https://work.ink/2Lvi/6183581d-8712-4fe0-b2e9-fd0cbce9844b" class="btn">🚀 Get Key</a>
-                <div class="footer">Work.ink tamamlandıktan sonra otomatik olarak geri yönlendirileceksin.</div>
+                <div class="footer">After completing Work.ink, you will be automatically redirected back.</div>
             </div>
         </body>
         </html>
