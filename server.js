@@ -4,36 +4,29 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const KEY_FILE = './activeKeys.json';
-const SECRET_TOKEN = "SqaysSecurePass_9921";
+const TOKEN_FILE = './tokens.json';
 
-// Kayıtlı keyleri dosyadan yükleme
-function loadKeysFromDisk() {
+// ===== Yardımcı Fonksiyonlar =====
+function loadJSON(file) {
     try {
-        if (fs.existsSync(KEY_FILE)) {
-            const data = fs.readFileSync(KEY_FILE, 'utf8');
-            return JSON.parse(data);
+        if (fs.existsSync(file)) {
+            return JSON.parse(fs.readFileSync(file, 'utf8'));
         }
-    } catch (e) {
-        console.error("Keyler yüklenirken hata oluştu:", e);
-    }
+    } catch (e) { console.error(file + ' yüklenemedi:', e); }
     return {};
 }
 
-// Keyleri dosyaya kaydetme
-function saveKeysToDisk(keys) {
+function saveJSON(file, data) {
     try {
-        fs.writeFileSync(KEY_FILE, JSON.stringify(keys, null, 2));
-    } catch (e) {
-        console.error("Keyler kaydedilirken hata oluştu:", e);
-    }
+        fs.writeFileSync(file, JSON.stringify(data, null, 2));
+    } catch (e) { console.error(file + ' kaydedilemedi:', e); }
 }
 
-// Aktif keyleri ve çerezleri tutan hafıza
-let activeKeys = loadKeysFromDisk();
-const userActiveKey = {};
+let activeKeys = loadJSON(KEY_FILE);
+let userTokens = loadJSON(TOKEN_FILE);
 
-// Süresi geçen keyleri otomatik temizleme fonksiyonu
-function cleanExpiredKeys() {
+// Süresi geçenleri temizle
+function cleanExpired() {
     const now = Date.now();
     let changed = false;
     for (const key in activeKeys) {
@@ -42,112 +35,224 @@ function cleanExpiredKeys() {
             changed = true;
         }
     }
+    for (const token in userTokens) {
+        if (now > userTokens[token].expire) {
+            delete userTokens[token];
+            changed = true;
+        }
+    }
     if (changed) {
-        saveKeysToDisk(activeKeys);
+        saveJSON(KEY_FILE, activeKeys);
+        saveJSON(TOKEN_FILE, userTokens);
     }
 }
 
-// Çerez okuma yardımcısı
-function parseCookies(request) {
+// Çerez oku
+function parseCookies(req) {
     const list = {};
-    const rc = request.headers.cookie;
+    const rc = req.headers.cookie;
     if (rc) {
-        rc.split(';').forEach(function(cookie) {
-            const parts = cookie.split('=');
+        rc.split(';').forEach(c => {
+            const parts = c.split('=');
             list[parts.shift().trim()] = decodeURI(parts.join('='));
         });
     }
     return list;
 }
 
-// Ana sayfa engeli
+// ===== ANA SAYFA (Sitenin Girişi) =====
 app.get('/', (req, res) => {
     res.send(`
+        <!DOCTYPE html>
         <html>
-        <head><title>Access Denied - Sqays Hub</title></head>
-        <body style="background:#0b0b0e; color:#ff4444; font-family:sans-serif; text-align:center; padding-top:100px;">
-            <h2>Access Denied!</h2>
-            <p>You must complete the Work.ink link to access this page.</p>
+        <head>
+            <title>Sqays Hub - Get Your Key</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                    background: #0b0b0e;
+                    color: white;
+                    font-family: 'Segoe UI', sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                }
+                .container {
+                    text-align: center;
+                    background: #14141c;
+                    padding: 50px 70px;
+                    border-radius: 20px;
+                    border: 2px solid #7a00ff;
+                    box-shadow: 0 0 50px rgba(122, 0, 255, 0.2);
+                }
+                h1 {
+                    color: #bb66ff;
+                    font-size: 36px;
+                    margin-bottom: 10px;
+                }
+                p {
+                    color: #aaa;
+                    margin-bottom: 35px;
+                    font-size: 16px;
+                }
+                .btn {
+                    background: #7a00ff;
+                    color: white;
+                    border: none;
+                    padding: 16px 50px;
+                    font-size: 20px;
+                    font-weight: bold;
+                    border-radius: 50px;
+                    cursor: pointer;
+                    text-decoration: none;
+                    display: inline-block;
+                    transition: 0.3s;
+                    box-shadow: 0 0 20px rgba(122, 0, 255, 0.4);
+                }
+                .btn:hover {
+                    background: #9a44ff;
+                    transform: scale(1.05);
+                    box-shadow: 0 0 40px #7a00ff;
+                }
+                .footer {
+                    margin-top: 25px;
+                    font-size: 12px;
+                    color: #444;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🔑 Sqays Hub</h1>
+                <p>12 saat geçerli anahtarını almak için butona tıkla.<br>Önce Work.ink'e yönlendirileceksin.</p>
+                <a href="https://work.ink/2Lvi/6183581d-8712-4fe0-b2e9-fd0cbce9844b" class="btn">🚀 Get Key</a>
+                <div class="footer">Work.ink tamamlandıktan sonra otomatik olarak geri yönlendirileceksin.</div>
+            </div>
         </body>
         </html>
     `);
 });
 
-// 1. Key Üretme Sayfası
+// ===== WORK.INK'ten Gelen Kullanıcı =====
+app.get('/start', (req, res) => {
+    cleanExpired();
+
+    const token = 'T_' + Math.random().toString(36).substring(2, 12) + 
+                  Math.random().toString(36).substring(2, 12);
+    const expire = Date.now() + 12 * 60 * 60 * 1000;
+    const userId = 'User_' + Math.random().toString(36).substring(2, 10);
+
+    userTokens[token] = { userId, expire };
+    saveJSON(TOKEN_FILE, userTokens);
+
+    res.cookie('sqays_token', token, {
+        maxAge: 12 * 60 * 60 * 1000,
+        httpOnly: true,
+        path: '/'
+    });
+
+    res.redirect(`/generate?token=${token}`);
+});
+
+// ===== KEY ALMA SAYFASI =====
 app.get('/generate', (req, res) => {
-    cleanExpiredKeys();
-    const userToken = req.query.token;
+    cleanExpired();
+
+    const token = req.query.token;
     const cookies = parseCookies(req);
-    let cookieId = cookies.sqays_user;
+    const cookieToken = cookies.sqays_token;
 
-    if (!cookieId) {
-        cookieId = "User_" + Math.random().toString(36).substring(2, 15);
-        res.setHeader('Set-Cookie', `sqays_user=${cookieId}; Max-Age=${12 * 60 * 60}; Path=/; HttpOnly`);
-    }
-
-    if (userToken !== SECRET_TOKEN && (!userActiveKey[cookieId] || Date.now() > userActiveKey[cookieId].expireTime)) {
+    if (!token || !userTokens[token]) {
         return res.send(`
             <html>
-            <head><title>Access Denied - Sqays Hub</title></head>
+            <head><title>Invalid Token</title></head>
             <body style="background:#0b0b0e; color:#ff4444; font-family:sans-serif; text-align:center; padding-top:100px;">
-                <h2>Invalid Access!</h2>
-                <p>Please complete the official Work.ink link.</p>
+                <h2>Invalid or expired token!</h2>
+                <p>Please go through the Work.ink link again.</p>
             </body>
             </html>
         `);
     }
 
-    if (userActiveKey[cookieId] && Date.now() < userActiveKey[cookieId].expireTime) {
-        const existingKey = userActiveKey[cookieId].key;
+    if (cookieToken !== token) {
         return res.send(`
             <html>
-            <head><title>Sqays Hub - Get Key</title></head>
-            <body style="background:#0b0b0e; color:white; font-family:sans-serif; text-align:center; padding-top:80px;">
-                <h2>You already have an active key!</h2>
-                <p>You can only generate a new key after 12 hours. Here is your current key:</p>
-                <input type="text" value="${existingKey}" readonly style="padding:10px; width:300px; text-align:center; font-size:16px; background:#1a1a24; color:#00ffcc; border:1px solid #7a00ff; border-radius:5px;">
+            <head><title>Unauthorized</title></head>
+            <body style="background:#0b0b0e; color:#ff4444; font-family:sans-serif; text-align:center; padding-top:100px;">
+                <h2>Unauthorized access!</h2>
+                <p>This token is not linked to your browser.</p>
             </body>
             </html>
         `);
     }
 
-    const randomKey = "Sqays_" + Math.random().toString(36).substring(2, 10).toUpperCase();
-    const expirationTime = Date.now() + (12 * 60 * 60 * 1000);
-    
-    activeKeys[randomKey] = expirationTime;
-    saveKeysToDisk(activeKeys); // Dosyaya kalıcı kaydet
+    if (Date.now() > userTokens[token].expire) {
+        delete userTokens[token];
+        saveJSON(TOKEN_FILE, userTokens);
+        return res.send(`
+            <html>
+            <head><title>Token Expired</title></head>
+            <body style="background:#0b0b0e; color:#ff4444; font-family:sans-serif; text-align:center; padding-top:100px;">
+                <h2>Your token has expired (12 hours).</h2>
+                <p>Please go through the Work.ink link again.</p>
+            </body>
+            </html>
+        `);
+    }
 
-    userActiveKey[cookieId] = { key: randomKey, expireTime: expirationTime };
-    
+    const userId = userTokens[token].userId;
+    let foundKey = null;
+    for (const key in activeKeys) {
+        if (key.startsWith(userId + '_')) {
+            foundKey = key;
+            break;
+        }
+    }
+
+    if (!foundKey) {
+        const newKey = userId + '_' + Math.random().toString(36).substring(2, 10).toUpperCase();
+        const expireTime = Date.now() + 12 * 60 * 60 * 1000;
+        activeKeys[newKey] = expireTime;
+        saveJSON(KEY_FILE, activeKeys);
+        foundKey = newKey;
+    }
+
     res.send(`
         <html>
-        <head><title>Sqays Hub - Get Key</title></head>
+        <head><title>Your Key - Sqays Hub</title></head>
         <body style="background:#0b0b0e; color:white; font-family:sans-serif; text-align:center; padding-top:80px;">
-            <h2>Key Successfully Generated!</h2>
-            <p>Copy the key below and paste it into your script (Valid for 12 Hours):</p>
-            <input type="text" value="${randomKey}" readonly style="padding:10px; width:300px; text-align:center; font-size:16px; background:#1a1a24; color:#00ffcc; border:1px solid #7a00ff; border-radius:5px;">
+            <h2>🔑 Your Key (Valid 12 Hours)</h2>
+            <p>Copy this key and paste it into the script:</p>
+            <input type="text" value="${foundKey}" readonly 
+                   style="padding:10px; width:300px; text-align:center; font-size:16px; 
+                          background:#1a1a24; color:#00ffcc; border:1px solid #7a00ff; 
+                          border-radius:5px;">
+            <br><br>
+            <p style="color:#888; font-size:12px;">Token expires in 12 hours. After that, get a new one via Work.ink.</p>
         </body>
         </html>
     `);
 });
 
-// 2. Key Doğrulama Endpoint'i (Roblox Scriptinin istek attığı yer)
+// ===== KEY DOĞRULAMA (Roblox Script'i) =====
 app.get('/verify/:key', (req, res) => {
-    cleanExpiredKeys();
+    cleanExpired();
     const userKey = req.params.key;
     const expireTime = activeKeys[userKey];
-    
     if (expireTime && Date.now() < expireTime) {
         res.json({ valid: true });
     } else {
         if (expireTime) {
-            delete activeKeys[key];
-            saveKeysToDisk(activeKeys);
+            delete activeKeys[userKey];
+            saveJSON(KEY_FILE, activeKeys);
         }
         res.json({ valid: false });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📌 Work.ink link should point to: https://sqayskey.onrender.com/start`);
 });
